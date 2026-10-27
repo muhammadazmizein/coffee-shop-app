@@ -1,0 +1,24 @@
+# Jaring pengaman di tingkat akar (tiap folder juga punya .gitignore sendiri)
+
+# Sistem dan editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Rahasia: JANGAN pernah di-commit. Hanya berkas contoh (.env.example) yang boleh naik.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.jks
+*.keystore
+key.properties
+
+# Data unggahan pengguna / foto produk (disimpan di server, bukan di repo)
+backend/uploads/
+
+# Sisa build TypeScript
+*.tsbuildinfo

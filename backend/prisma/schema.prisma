@@ -1,0 +1,375 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum OrderType {
+  PICKUP
+  DELIVERY
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  PREPARING
+  READY
+  ON_DELIVERY
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+enum VoucherType {
+  PERCENT
+  FIXED
+}
+
+enum Role {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  name      String?
+  role      Role     @default(CUSTOMER)
+  points    Int      @default(0)
+  /// Total belanja terbayar seumur akun (rupiah); menentukan level member.
+  lifetimeSpend Int  @default(0)
+  outletId  String?
+  email     String?
+  birthDate DateTime? @db.Date
+  /// 'MALE' | 'FEMALE'
+  gender    String?
+  createdAt DateTime @default(now())
+
+  addresses     Address[]
+  orders        Order[]
+  ledger        PointLedger[]
+  checkIns      CheckIn[]
+  notifications Notification[]
+}
+
+model Otp {
+  id        String   @id @default(cuid())
+  phone     String
+  codeHash  String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([phone, createdAt])
+}
+
+model Outlet {
+  id            String  @id @default(cuid())
+  name          String
+  address       String
+  lat           Decimal @db.Decimal(10, 7)
+  lng           Decimal @db.Decimal(10, 7)
+  openHour      Int     @default(8)
+  closeHour     Int     @default(22)
+  deliveryRadiusKm  Decimal @default(1.0) @db.Decimal(5, 2)
+  deliveryBaseFee   Int     @default(8000)
+  deliveryBaseKm    Decimal @default(1.0) @db.Decimal(5, 2)
+  deliveryPerKmFee  Int     @default(2500)
+  isActive      Boolean @default(true)
+  /// Nomor telepon outlet, format 62xxxxxxxxxx (null = belum diisi).
+  phone         String?
+
+  orders   Order[]
+  stock    OutletProduct[]
+  couriers Courier[]
+}
+
+model Courier {
+  id        String  @id @default(cuid())
+  outletId  String
+  name      String
+  phone     String
+  isActive  Boolean @default(true)
+
+  outlet Outlet  @relation(fields: [outletId], references: [id])
+  orders Order[]
+
+  @@index([outletId])
+}
+
+model Category {
+  id       String    @id @default(cuid())
+  name     String
+  sort     Int       @default(0)
+  products Product[]
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  categoryId  String
+  name        String
+  description String?  @db.Text
+  imageUrl    String?
+  price       Int
+  isActive    Boolean  @default(true)
+
+  category     Category        @relation(fields: [categoryId], references: [id])
+  optionGroups OptionGroup[]
+  stock        OutletProduct[]
+  orderItems   OrderItem[]
+
+  @@index([categoryId])
+}
+
+model OutletProduct {
+  outletId    String
+  productId   String
+  isAvailable Boolean @default(true)
+
+  outlet  Outlet  @relation(fields: [outletId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@id([outletId, productId])
+}
+
+model OptionGroup {
+  id        String  @id @default(cuid())
+  productId String
+  name      String
+  required  Boolean @default(false)
+  maxSelect Int     @default(1)
+
+  product Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options Option[]
+
+  @@index([productId])
+}
+
+model Option {
+  id         String @id @default(cuid())
+  groupId    String
+  name       String
+  extraPrice Int    @default(0)
+
+  group OptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+}
+
+model Address {
+  id        String  @id @default(cuid())
+  userId    String
+  label     String
+  recipient String
+  phone     String
+  detail    String  @db.Text
+  lat       Decimal @db.Decimal(10, 7)
+  lng       Decimal @db.Decimal(10, 7)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@index([userId])
+}
+
+model Voucher {
+  id         String      @id @default(cuid())
+  code       String      @unique
+  type       VoucherType
+  value      Int
+  minSpend   Int         @default(0)
+  maxDiscount Int?
+  quota      Int         @default(0)
+  used       Int         @default(0)
+  startsAt   DateTime
+  endsAt     DateTime
+  isActive   Boolean     @default(true)
+
+  orders Order[]
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  code         String      @unique
+  userId       String
+  outletId     String
+  type         OrderType
+  status       OrderStatus @default(PENDING_PAYMENT)
+  addressId    String?
+  voucherId    String?
+  subtotal     Int
+  discount     Int         @default(0)
+  deliveryFee  Int         @default(0)
+  total        Int
+  pointsUsed   Int         @default(0)
+  pointsEarned Int         @default(0)
+  /// Snapshot level member saat pesanan dibuat: diskon, nama level, dan pengali poin.
+  memberDiscount    Int     @default(0)
+  tierName          String?
+  earnMultiplierPct Int     @default(100)
+  note         String?
+  courierId    String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user    User      @relation(fields: [userId], references: [id])
+  outlet  Outlet    @relation(fields: [outletId], references: [id])
+  address Address?  @relation(fields: [addressId], references: [id])
+  voucher Voucher?  @relation(fields: [voucherId], references: [id])
+  courier Courier?  @relation(fields: [courierId], references: [id])
+  items   OrderItem[]
+  payment Payment?
+  events  OrderEvent[]
+
+  @@index([userId, createdAt])
+  @@index([outletId, status])
+}
+
+model OrderItem {
+  id        String @id @default(cuid())
+  orderId   String
+  productId String
+  name      String
+  qty       Int
+  unitPrice Int
+  options   Json
+  note      String?
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  orderId     String        @unique
+  /// ID transaksi di Midtrans untuk percobaan TERBARU: `${order.code}-${attempt}` (baris lama Snap: order.code).
+  midtransId  String        @unique
+  attempt     Int           @default(0)
+  snapToken   String?
+  redirectUrl String?
+  status      PaymentStatus @default(PENDING)
+  /// Kunci metode kita (qris, gopay, bca_va, ...); baris lama Snap berisi payment_type Midtrans.
+  method      String?
+  amount      Int?
+  vaBank      String?
+  vaNumber    String?
+  billerCode  String?
+  billKey     String?
+  qrString    String?       @db.Text
+  qrImageUrl  String?       @db.Text
+  deeplinkUrl String?       @db.Text
+  payerPhone  String?
+  expiresAt   DateTime?
+  paidAt      DateTime?
+  createdAt   DateTime      @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
+}
+
+model PointLedger {
+  id        String   @id @default(cuid())
+  userId    String
+  delta     Int
+  reason    String
+  orderId   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+/// Jejak setiap perubahan status pesanan (siapa, kapan).
+model OrderEvent {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  actorId   String?
+  note      String?
+  createdAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+}
+
+/// Slide promo di layar welcome app. Tampil bila aktif dan dalam periode; gambar: foto unggahan atau ilustrasi bawaan app (art).
+model Promo {
+  id        String    @id @default(cuid())
+  title     String    @db.VarChar(60)
+  body      String    @db.VarChar(160)
+  imageUrl  String?
+  art       String?   @db.VarChar(40)
+  ctaLabel  String?   @db.VarChar(30)
+  voucherCode String? @db.VarChar(40)
+  sort      Int       @default(0)
+  isActive  Boolean   @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([isActive, sort])
+}
+
+/// Level member. Level user = tier dengan minSpend terbesar yang <= User.lifetimeSpend.
+model Tier {
+  id                String @id @default(cuid())
+  name              String @unique
+  minSpend          Int
+  earnMultiplierPct Int    @default(100)
+  discountPct       Int    @default(0)
+  maxDiscount       Int?
+  sort              Int    @default(0)
+}
+
+/// Hadiah poin check-in harian per hari siklus (1..7); diatur admin.
+model CheckInReward {
+  day    Int @id
+  points Int
+}
+
+/// Satu klaim check-in. `date` = hari WIB (YYYY-MM-DD); unik per user sehingga klaim ganda/serentak ditolak database.
+model CheckIn {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String
+  day       Int
+  points    Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+/// Notifikasi dalam aplikasi (kotak masuk). type: ORDER | POINTS | CHECKIN | LEVEL | PROMO.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String    @db.Text
+  orderId   String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}

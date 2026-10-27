@@ -1,0 +1,13 @@
+services:
+  mysql:
+    image: docker.io/library/mysql:8.0
+    container_name: kopi-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: kopi
+    ports:
+      - "127.0.0.1:3308:3306"
+    volumes:
+      - kopi-mysql-data:/var/lib/mysql
+volumes:
+  kopi-mysql-data:
